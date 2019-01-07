@@ -1,0 +1,132 @@
+Protocol description
+
+Generics : 
+
+-encryption used is XXTEA
+-CRC types used :
+-- Server side (Java):
+// calculate checksum 4b
+    static long crc4(byte[] array)
+    {
+        long res = 0;
+        for (int i = 0; i < array.length; i++)
+        {
+            int c = array[i] & 0xFF;
+            res = (res << 1) ^ c;
+            res = res & 0xFFFFFFFFL;
+        }
+        return res;
+    }
+
+    // calculate checksum 1b
+    static byte crc(byte[] array)
+    {
+        long res = 0;
+        for (int i = 0; i < array.length; i++)
+        {
+            int c = array[i] & 0xFF;
+            res = (res << 1) ^ c;
+            res = res & 0xFFFFFFFFL;
+        }
+        return (byte) (res & 0xFF);
+    } 
+-- Web site (JS) :
+function i4things_crc4(c) {
+    var crc = 0;
+    for (var i = 0; i < c.length; i++) {
+        var b = c[i] & 0xFF;
+        crc = (crc << 1) ^ b;
+        crc = crc & 0xFFFFFFFF;
+    };
+    return crc;
+}
+
+function i4things_crc(c) {
+    var crc = 8606;
+    for (var i = 0; i < c.length; i++) {
+        var b = c[i] & 0xFF;
+        crc = (crc << 1) ^ b;
+        crc = crc & 0xFFFFFFFF;
+    };
+    return crc & 0xFF;
+}
+
+-- Node side (C)
+uint8_t crc(uint8_t buf_[],
+                uint16_t end_index_,
+                uint16_t start_index)
+    {
+      uint32_t res = 8606;  // add magic
+      for (uint16_t i = start_index; i < end_index_; i++)
+      {
+        uint8_t c = buf_[i];
+        res = (res << 1) ^ c;
+        res = res & 0xFFFFFFFF;
+      }
+      return (uint8_t)(res & 0xFF);
+    }
+
+node -> gateway -> server
+
+-encrypt payload with node/user private key ( known only to the owner of the node )
+-generate (CRC) and sequence
+-add target(gateway id/if public/open then the id is 10) and origin (node id)
+-send to gateway
+-when gateway receive it  
+-add packet size
+-add operation id - (1 byte)
+-add seq and magic ( 2 bytes) to the message
+-add rssi ( 2 bytes) to the message
+-add gateway ID ( uint32 )
+!WARNING open gateways have even id - ( id % 2 == 0 ) 
+-generate CRC (4 bytes)
+-encrypt CRC  + message -  with gateway key ( for open/public key is public )
+-add to message
+-sent to server and send ack to device
+-when message arrives to the server
+-split gateway id and payload
+-search for gateway ID - if not found discard
+-decrypt with gateway key 
+-split CRC and payload 
+-generate CRC on payload and compare with CRC from decrypted - if not match discard
+-if gateway id is odd (id % 2 == 1) check if node_id/device_id owned by the same account as the gateway if not discard the message
+-if node id do not exists discard message 
+-store in in-memory database
+
+server -> client app/html
+
+-client generate request string from:
+-8 bytes long int UTC time challenge
+-generate and add 4 bytes CRC in front
+-encrypt binary with node network key
+-add node id in 64bit number in bytes format ( 8 bytes )
+-total - 20 bytes - covert to HEX - 40 bytes
+-add to REST request
+
+-server find the node id in database if not exist discard request
+-decrypt with node network key
+-generate CRC and compare with in the message if not the same discard
+-collect all data for the day ( or history)
+-encrypt every line of data ( triangulated coordinates, rssi, payload) with node network key
+-send to client
+-client decrypt with node network key
+-decrypt internal payload with private key 
+
+app/html-> server -> node 
+
+-client generate request string from:
+-8 bytes long int UTC time challenge
+-generate and add 4 bytes CRC in front
+-encrypt binary with node network key
+-add node id in 64bit number in bytes format ( 8 bytes )
+-generate 1 byte crc add at front of data and encrypt data with node private key ( known only to the owner of the node )
+-add to REST request
+-server search for node id - if not found discard
+-server decrypt with node network key and generate and check CRC if not match discard
+-finds the gateway from which the last message has been received with max rssi
+-prepare ( in full gateway to node format - CRC-SEQ-SRC-DEST-DATA - with 0 for seq and crc) stores the payload to the list of messages for this gateway
+-stores a link to the payload in a delayQ - with purpose to clear all messages older then 30min
+-on the response part on the heartbeat tick ( heartbeats from gateways need to start sending every 1 minute) max 60 messages are collected and no more then 1KB
+-when gateway receive the messages for dispatch it schedules them for sending - with hi-priority ACK and low priority notifications, and cycle over notifications until ack is received for every notification or next heartbeat time is due , when heartbeat is received the buffer is overwritten - all non send messages discarded
+-when the node receive the message - sends ack back to gateway
+-crc is checked and message is decrypted with private key and the CRC
