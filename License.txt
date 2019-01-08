@@ -1,0 +1,5 @@
+# License
+
+All Source Code excluding third party patched libraries is under Apache License 2.0 
+
+Apache License 2.0 can be found here : https://www.apache.org/licenses/LICENSE-2.0
