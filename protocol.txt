@@ -124,7 +124,7 @@ app/html-> server -> node
 -server search for node id - if not found discard
 -server decrypt with node network key and generate and check CRC if not match discard
 -finds the gateway from which the last message has been received with max rssi
--prepare ( in full gateway to node format - CRC-SEQ-SRC-DEST-DATA - with 0 for seq and crc) stores the payload to the list of messages for this gateway
+-prepare ( in full gateway to node format - CRC-SEQ-SRC-DEST-DATA - with 0 for seq and crc) if connection to gateway is active and still not reached the limits pet minute then data is sent else stores the payload to the list of messages for this gateway
 -stores a link to the payload in a delayQ - with purpose to clear all messages older then 30min
 -on the response part on the heartbeat tick ( heartbeats from gateways need to start sending every 1 minute) max 60 messages are collected and no more then 1KB
 -when gateway receive the messages for dispatch it schedules them for sending - with hi-priority ACK and low priority notifications, and cycle over notifications until ack is received for every notification or next heartbeat time is due , when heartbeat is received the buffer is overwritten - all non send messages discarded
